@@ -23,12 +23,22 @@ export function calculateJaccardSimilarity(tagsA: string[], tagsB: string[]): nu
 }
 
 /**
- * Register user in the online match pool with their tags snapshot.
+ * Register user in the online match pool with their tags snapshot and preferred language.
  */
-export async function addToOnlinePool(identityId: string, tags: string[] = []): Promise<void> {
+export async function addToOnlinePool(
+  identityId: string,
+  tags: string[] = [],
+  lang: string = 'any'
+): Promise<void> {
   const pipeline = redis.pipeline();
   pipeline.sadd('online:pool', identityId);
-  pipeline.set(`online:${identityId}:tags`, JSON.stringify(tags), 'EX', 3600); // 1h auto expiry
+  pipeline.set(
+    `online:${identityId}:info`,
+    JSON.stringify({ tags, lang: lang.toLowerCase() }),
+    'EX',
+    3600
+  );
+  pipeline.set(`online:${identityId}:tags`, JSON.stringify(tags), 'EX', 3600); // backwards compat
   await pipeline.exec();
 }
 
@@ -38,6 +48,7 @@ export async function addToOnlinePool(identityId: string, tags: string[] = []): 
 export async function removeFromOnlinePool(identityId: string): Promise<void> {
   const pipeline = redis.pipeline();
   pipeline.srem('online:pool', identityId);
+  pipeline.del(`online:${identityId}:info`);
   pipeline.del(`online:${identityId}:tags`);
   await pipeline.exec();
 }
@@ -65,11 +76,12 @@ export async function getBlockedIds(identityId: string): Promise<Set<string>> {
 }
 
 /**
- * Search the online pool for a candidate match.
+ * Search the online pool for a candidate match with optional language preference.
  */
 export async function findMatchCandidate(
   identityId: string,
-  mode: 'nearest' | 'random' = 'nearest'
+  mode: 'nearest' | 'random' = 'nearest',
+  preferredLang: string = 'any'
 ): Promise<{ peerId: string; score: number } | null> {
   // 1. Get all members in online:pool
   const members = await redis.smembers('online:pool');
@@ -87,20 +99,44 @@ export async function findMatchCandidate(
     return null;
   }
 
-  // 3. If mode is random or only one candidate
-  if (mode === 'random') {
-    const randomIndex = Math.floor(Math.random() * eligiblePeers.length);
-    return { peerId: eligiblePeers[randomIndex], score: 0 };
+  // 3. Language filtering if specific language requested
+  const targetLang = preferredLang.toLowerCase();
+  let langFilteredPeers: string[] = [];
+
+  if (targetLang !== 'any') {
+    for (const peerId of eligiblePeers) {
+      const infoRaw = await redis.get(`online:${peerId}:info`);
+      if (infoRaw) {
+        try {
+          const info = JSON.parse(infoRaw);
+          if (info.lang === targetLang || info.lang === 'any' || !info.lang) {
+            langFilteredPeers.push(peerId);
+          }
+        } catch {
+          langFilteredPeers.push(peerId);
+        }
+      } else {
+        langFilteredPeers.push(peerId);
+      }
+    }
   }
 
-  // 4. Mode is 'nearest': calculate Jaccard similarity against all eligible peers
+  const poolToEvaluate = langFilteredPeers.length > 0 ? langFilteredPeers : eligiblePeers;
+
+  // 4. If mode is random
+  if (mode === 'random') {
+    const randomIndex = Math.floor(Math.random() * poolToEvaluate.length);
+    return { peerId: poolToEvaluate[randomIndex], score: 0 };
+  }
+
+  // 5. Mode is 'nearest': calculate Jaccard similarity
   const myTagsRaw = await redis.get(`online:${identityId}:tags`);
   const myTags: string[] = myTagsRaw ? JSON.parse(myTagsRaw) : [];
 
   let bestPeer: string | null = null;
   let bestScore = -1;
 
-  for (const peerId of eligiblePeers) {
+  for (const peerId of poolToEvaluate) {
     const peerTagsRaw = await redis.get(`online:${peerId}:tags`);
     const peerTags: string[] = peerTagsRaw ? JSON.parse(peerTagsRaw) : [];
     const score = calculateJaccardSimilarity(myTags, peerTags);
@@ -111,11 +147,10 @@ export async function findMatchCandidate(
     }
   }
 
-  // If score is 0 but we have candidates, fall back to random eligible peer
   if (bestPeer && bestScore >= 0) {
     return { peerId: bestPeer, score: bestScore };
   }
 
-  const randomFallback = eligiblePeers[Math.floor(Math.random() * eligiblePeers.length)];
+  const randomFallback = poolToEvaluate[Math.floor(Math.random() * poolToEvaluate.length)];
   return { peerId: randomFallback, score: 0 };
 }
