@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Identity {
+  id              String    @id
+  createdAt       DateTime  @default(now()) @map("created_at")
+  isFixed         Boolean   @default(false) @map("is_fixed")
+  passphraseHash  String?   @map("passphrase_hash")
+
+  profile         Profile?
+  reportedBlocks  Block[]   @relation("ReporterBlocks")
+  receivedBlocks  Block[]   @relation("BlockedBlocks")
+
+  @@map("identities")
+}
+
+model Profile {
+  identityId String   @id @map("identity_id")
+  tags       String[] @default([])
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Block {
+  id         String   @id @default(cuid())
+  reporterId String   @map("reporter_id")
+  blockedId  String   @map("blocked_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  reporter   Identity @relation("ReporterBlocks", fields: [reporterId], references: [id], onDelete: Cascade)
+  blocked    Identity @relation("BlockedBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, blockedId])
+  @@index([reporterId])
+  @@index([blockedId])
+  @@map("blocks")
+}

@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #0a0a12;
+  --foreground: #f5f5f7;
+  --primary: #f5f5f7;
+  --card: #14141f;
+  --card-foreground: #f5f5f7;
+  --muted-foreground: #9090a0;
+  --border: rgba(255, 255, 255, 0.09);
+  --ring: #22d3ee;
+  --violet: #8b5cf6;
+  --violet-glow: rgba(139, 92, 246, 0.25);
+  --cyan: #22d3ee;
+  --success: #34d399;
+  --danger: #f87171;
+  
+  --bg-main: #0a0a12;
+  --bg-surface: #14141f;
+  --bg-surface-raised: #1c1c2b;
+  --border-color: rgba(255, 255, 255, 0.09);
+  --accent-primary: #8b5cf6;
+  --accent-primary-hover: #7c3aed;
+  --text-main: #f5f5f7;
+  --text-muted: #9090a0;
+}
+
+* {
+  border-color: var(--border);
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--background);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-heading {
+  font-family: var(--font-manrope), var(--font-geist), system-ui, sans-serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a12;
+}
+::-webkit-scrollbar-thumb {
+  background: #232336;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #363650;
+}
+
+/* Background grid */
+.bg-grid {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+  mix-blend-mode: screen;
+  z-index: 100;
+}
+
+/* Onboarding Shell & Cards */
+.onboarding-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--background);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.glass-card {
+  background: rgba(20, 20, 31, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.gradient-button {
+  background: linear-gradient(110deg, #8b5cf6, #22d3ee);
+}
+
+.copy-button {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(20, 20, 31, 0.74);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glass-panel-glow {
+  background: rgba(20, 20, 31, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 35px -5px rgba(139, 92, 246, 0.2);
+}
+
+/* Tag Chips */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #9090a0;
+  background: rgba(255, 255, 255, 0.025);
+  transition: all 0.2s ease-out;
+  cursor: pointer;
+}
+
+.tag-chip:hover:not(:disabled) {
+  border-color: rgba(139, 92, 246, 0.8);
+  color: #f5f5f7;
+  background: rgba(139, 92, 246, 0.1);
+  transform: translateY(-1px);
+}
+
+.tag-chip-selected {
+  border-color: transparent !important;
+  color: #0a0a12 !important;
+  background: linear-gradient(90deg, #8b5cf6, #22d3ee) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.25);
+}
+
+.tag-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+/* Subtle radar pulse animation */
+@keyframes radar-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.radar-ring {
+  animation: radar-pulse 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+
+.radar-ring-delayed {
+  animation: radar-pulse 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite 1.2s;
+}
+
+@layer base {
+  button, a { -webkit-tap-highlight-color: transparent; }
+}
