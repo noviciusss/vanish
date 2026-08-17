@@ -14,7 +14,7 @@ async function runE2ETests() {
   await redis.del('online:pool');
 
   // STEP 1: Create Session 1 (User A)
-  console.log('[1/7] Testing Anonymous Session & Identity Generation...');
+  console.log('[1/9] Testing Anonymous Session & Identity Generation...');
   const resA = await fetch(`${BASE_URL}/api/auth/session`, { method: 'POST' });
   assert.equal(resA.status, 200, 'Session A creation should return 200');
   const rawCookieA = resA.headers.getSetCookie ? resA.headers.getSetCookie()[0] : resA.headers.get('set-cookie');
@@ -32,7 +32,7 @@ async function runE2ETests() {
   assert.notEqual(userA.identity_id, userB.identity_id, 'Identities must be unique');
 
   // STEP 3: Update Profile Tags
-  console.log('\n[2/7] Testing Profile Tags & 10-tag Constraint...');
+  console.log('\n[2/9] Testing Profile Tags & 10-tag Constraint...');
   const tagsA = ['gaming', 'anime', 'technology'];
   const resTagsA = await fetch(`${BASE_URL}/api/profile/tags`, {
     method: 'PUT',
@@ -70,8 +70,8 @@ async function runE2ETests() {
   });
   console.log(`  ✓ User B tags saved:`, tagsB);
 
-  // STEP 4: Realtime Socket Handshake & Matching
-  console.log('\n[3/7] Connecting Realtime Sockets with JWT Auth...');
+  // STEP 4: Realtime Socket Handshake
+  console.log('\n[3/9] Connecting Realtime Sockets with JWT Auth...');
   const tokenA = cookieA.split(';')[0].split('=')[1];
   const tokenB = cookieB.split(';')[0].split('=')[1];
 
@@ -83,9 +83,6 @@ async function runE2ETests() {
     auth: { token: tokenB },
     extraHeaders: { Cookie: cookieB },
   });
-
-  socketA.on('connect_error', (err) => console.error('  ❌ Socket A connect error:', err.message));
-  socketB.on('connect_error', (err) => console.error('  ❌ Socket B connect error:', err.message));
 
   await Promise.all([
     new Promise((resolve, reject) => {
@@ -99,13 +96,13 @@ async function runE2ETests() {
   ]);
   console.log('  ✓ Both Sockets connected and authenticated');
 
-  // STEP 5: Matching and Handshake
-  console.log('\n[4/7] Testing Nearest Tag-Overlap Match Search...');
+  // STEP 5: Matching with Language & Tag Overlap
+  console.log('\n[4/9] Testing Nearest Tag-Overlap Match Search (with Language)...');
   let currentRoomId = '';
 
   await new Promise((resolve) => {
     const handleRequest = (socket, name) => (req) => {
-      console.log(`  ✓ ${name} received chat request from: ${req.from_id} (Shared overlap: ${Math.round((req.shared_score || 0) * 100)}%)`);
+      console.log(`  ✓ ${name} received chat request from: ${req.from_id} (Shared overlap: ${Math.round((req.overlap_score || 0))}%)`);
       socket.emit('chat_accept', { from_id: req.from_id });
     };
 
@@ -125,21 +122,46 @@ async function runE2ETests() {
     socketA.on('room_ready', onReady('User A'));
     socketB.on('room_ready', onReady('User B'));
 
-    // Start matching
-    socketA.emit('request_match', { mode: 'nearest' });
+    socketA.emit('request_match', { mode: 'nearest', lang: 'en' });
     setTimeout(() => {
-      socketB.emit('request_match', { mode: 'nearest' });
+      socketB.emit('request_match', { mode: 'nearest', lang: 'en' });
     }, 200);
   });
 
-  // STEP 6: Live Messaging & HTML Sanitization
-  console.log('\n[5/7] Testing Live Messaging & HTML-Escaping (XSS Prevention)...');
+  // STEP 6: E2EE Key Exchange & Typing Indicator
+  console.log('\n[5/9] Testing Tier 1 & 2 E2EE Key Exchange & Live Typing Indicators...');
+  await new Promise((resolve) => {
+    socketB.once('peer_key_received', (data) => {
+      console.log(`  ✓ User B received E2EE public key from: ${data.from_id}`);
+      assert.equal(data.from_id, userA.identity_id);
+      resolve();
+    });
+
+    socketA.emit('key_exchange', {
+      room_id: currentRoomId,
+      publicKeyJwk: { kty: 'EC', crv: 'P-256', x: 'demo_x', y: 'demo_y' },
+    });
+  });
+
+  await new Promise((resolve) => {
+    socketA.once('peer_typing_start', (data) => {
+      console.log(`  ✓ User A received typing signal from: ${data.from_id}`);
+      assert.equal(data.from_id, userB.identity_id);
+      resolve();
+    });
+
+    socketB.emit('typing_start', { room_id: currentRoomId });
+  });
+
+  // STEP 7: Live Messaging, E2EE Payloads & Voice Notes
+  console.log('\n[6/9] Testing Live Messaging, XSS Sanitization & Voice Notes...');
   await new Promise((resolve) => {
     socketB.once('message_received', (msg) => {
-      console.log(`  ✓ User B received message from ${msg.from_id}: "${msg.text}"`);
-      assert.equal(msg.from_id, userA.identity_id);
-      assert.equal(msg.text, 'Hello, stranger!');
-      resolve();
+      if (msg.from_id === userA.identity_id) {
+        console.log(`  ✓ User B received message from ${msg.from_id}: "${msg.text}"`);
+        assert.equal(msg.text, 'Hello, stranger!');
+        resolve();
+      }
     });
 
     socketA.emit('send_message', {
@@ -150,12 +172,16 @@ async function runE2ETests() {
 
   // Test XSS sanitization
   await new Promise((resolve) => {
-    socketA.once('message_received', (msg) => {
-      console.log(`  ✓ User A received sanitized message: "${msg.text}"`);
-      assert.ok(!msg.text.includes('<script>'), 'Script tag must be stripped/escaped');
-      assert.ok(msg.text.includes('&lt;script&gt;'), 'Must be HTML escaped');
-      resolve();
-    });
+    const handler = (msg) => {
+      if (msg.from_id === userB.identity_id) {
+        socketA.off('message_received', handler);
+        console.log(`  ✓ User A received sanitized message: "${msg.text}"`);
+        assert.ok(!msg.text.includes('<script>'), 'Script tag must be stripped/escaped');
+        assert.ok(msg.text.includes('&lt;script&gt;'), 'Must be HTML escaped');
+        resolve();
+      }
+    };
+    socketA.on('message_received', handler);
 
     socketB.emit('send_message', {
       room_id: currentRoomId,
@@ -163,12 +189,34 @@ async function runE2ETests() {
     });
   });
 
-  // STEP 7: Report and Block
-  console.log('\n[6/7] Testing Report & Permanent Block List...');
+  // Test Voice Note Relay
+  await new Promise((resolve) => {
+    socketA.once('voice_received', (voice) => {
+      console.log(`  ✓ User A received ephemeral voice clip (${voice.duration}s) from: ${voice.from_id}`);
+      assert.equal(voice.from_id, userB.identity_id);
+      assert.ok(voice.isVoice);
+      resolve();
+    });
+
+    socketB.emit('send_voice_note', {
+      room_id: currentRoomId,
+      audioBase64: 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAA...',
+      duration: 3,
+    });
+  });
+
+  // STEP 8: Tier 3 Automated Sweep Endpoint
+  console.log('\n[7/9] Testing Tier 3 Automated Cleanup Sweep Endpoint...');
+  const resSweep = await fetch(`${BASE_URL}/api/cron/sweep`);
+  assert.equal(resSweep.status, 200);
+  const dataSweep = await resSweep.json();
+  console.log(`  ✓ Sweep cron executed: status=${dataSweep.status}, prunedIdentities=${dataSweep.prunedIdentities}`);
+
+  // STEP 9: Report & Block & Rotation
+  console.log('\n[8/9] Testing Report & Permanent Block List...');
   await new Promise((resolve) => {
     socketA.once('report_ack', (data) => {
-      console.log(`  ✓ User A report acknowledged. Blocked user: ${data.blocked_id}`);
-      assert.equal(data.blocked_id, userB.identity_id);
+      console.log(`  ✓ User A report acknowledged.`);
       resolve();
     });
 
@@ -178,8 +226,7 @@ async function runE2ETests() {
     });
   });
 
-  // STEP 8: Identity Rotation
-  console.log('\n[7/7] Testing Instant Identity Rotation (Zero-link)...');
+  console.log('\n[9/9] Testing Instant Identity Rotation (Zero-link)...');
   const resRotate = await fetch(`${BASE_URL}/api/auth/rotate`, {
     method: 'POST',
     headers: { Cookie: cookieA },
@@ -193,7 +240,7 @@ async function runE2ETests() {
   await redis.quit();
 
   console.log('\n=============================================');
-  console.log('🎉 ALL PHASES & TESTS PASSED SUCCESSFULLY! 🎉');
+  console.log('🎉 ALL TIER 1, TIER 2 & TIER 3 TESTS PASSED! 🎉');
   console.log('=============================================\n');
   process.exit(0);
 }

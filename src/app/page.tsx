@@ -229,6 +229,10 @@ export default function Page() {
       setMessages((prev) => [...prev, msg]);
     });
 
+    socket.on('voice_received', (msg: ChatMessage) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
     socket.on('peer_left', (data: { peer_id: string }) => {
       setRoomParticipants((prev) => prev.filter((p) => p !== data.peer_id));
       setMessages((prev) => [
@@ -302,10 +306,10 @@ export default function Page() {
   };
 
   // Matching actions
-  const handleStartSearch = (mode: 'nearest' | 'random') => {
+  const handleStartSearch = (mode: 'nearest' | 'random', lang: string = 'any') => {
     setMatchMode(mode);
     setIsSearching(true);
-    socketRef.current?.emit('request_match', { mode });
+    socketRef.current?.emit('request_match', { mode, lang });
     scrollToChat();
   };
 
@@ -334,9 +338,24 @@ export default function Page() {
   };
 
   // Chat Room Actions
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = (payload: {
+    text: string;
+    ciphertext?: string;
+    iv?: string;
+    isEncrypted?: boolean;
+    timerSeconds?: number;
+  }) => {
     if (!currentRoomId) return;
-    socketRef.current?.emit('send_message', { room_id: currentRoomId, text });
+    socketRef.current?.emit('send_message', { room_id: currentRoomId, ...payload });
+  };
+
+  const handleSendVoiceNote = (audioBase64: string, duration: number) => {
+    if (!currentRoomId) return;
+    socketRef.current?.emit('send_voice_note', {
+      room_id: currentRoomId,
+      audioBase64,
+      duration,
+    });
   };
 
   const handleLeaveRoom = () => {
@@ -539,7 +558,9 @@ export default function Page() {
                 myIdentityId={identityId}
                 participants={roomParticipants}
                 messages={messages}
+                socket={socketRef.current}
                 onSendMessage={handleSendMessage}
+                onSendVoiceNote={handleSendVoiceNote}
                 onLeaveRoom={handleLeaveRoom}
                 onLeaveAndFindNew={handleLeaveAndFindNew}
                 onReportUser={handleReportUser}

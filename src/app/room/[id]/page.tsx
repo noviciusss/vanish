@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import io, { Socket } from 'socket.io-client';
 import { ChatRoom, ChatMessage } from '@/components/ChatRoom';
-import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +88,10 @@ export default function RoomPage() {
       setMessages((prev) => [...prev, msg]);
     });
 
+    socket.on('voice_received', (msg: ChatMessage) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
     socket.on('peer_left', (data: { peer_id: string }) => {
       setParticipants((prev) => prev.filter((p) => p !== data.peer_id));
       setMessages((prev) => [
@@ -117,8 +121,22 @@ export default function RoomPage() {
     };
   }, [identityId, roomId, router]);
 
-  const handleSendMessage = (text: string) => {
-    socketRef.current?.emit('send_message', { room_id: roomId, text });
+  const handleSendMessage = (payload: {
+    text: string;
+    ciphertext?: string;
+    iv?: string;
+    isEncrypted?: boolean;
+    timerSeconds?: number;
+  }) => {
+    socketRef.current?.emit('send_message', { room_id: roomId, ...payload });
+  };
+
+  const handleSendVoiceNote = (audioBase64: string, duration: number) => {
+    socketRef.current?.emit('send_voice_note', {
+      room_id: roomId,
+      audioBase64,
+      duration,
+    });
   };
 
   const handleLeaveRoom = () => {
@@ -186,7 +204,9 @@ export default function RoomPage() {
           myIdentityId={identityId}
           participants={participants}
           messages={messages}
+          socket={socketRef.current}
           onSendMessage={handleSendMessage}
+          onSendVoiceNote={handleSendVoiceNote}
           onLeaveRoom={handleLeaveRoom}
           onLeaveAndFindNew={handleLeaveAndFindNew}
           onReportUser={handleReportUser}
